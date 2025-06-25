@@ -49,4 +49,32 @@ router.get("/summary", async (req, res) => {
   res.json(summary);
 });
 
+// ✅ NEW: Get all progress entries for a specific user
+router.get("/:userId", async (req, res) => {
+  const userId = req.params.userId;
+
+  const user = await User.findById(userId);
+  if (!user) return res.status(404).json({ error: "User not found" });
+
+  const assignedTopics = await Topic.find({
+    $or: [
+      { jobTitles: { $in: user.jobTitles } },
+      { assignedTo: user._id },
+      { jobTitles: "All" },
+    ],
+  });
+
+  const progress = await Progress.find({ userId });
+
+  const enriched = assignedTopics.map(topic => {
+    const entry = progress.find(p => p.topicId.toString() === topic._id.toString());
+    return {
+      topicId: topic,
+      completed: entry?.completed || false,
+    };
+  });
+
+  res.json(enriched);
+});
+
 export default router;
