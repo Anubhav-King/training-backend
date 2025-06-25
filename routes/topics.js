@@ -5,10 +5,9 @@ import { verifyToken } from "../middleware/auth.js";
 
 const router = express.Router();
 
-// 📌 Route: Add a new topic (used for bulk upload)
+// 📌 Add a new topic
 router.post("/add", verifyToken, async (req, res) => {
-  console.log('📥 New topic received:', req.body);
-
+  console.log("📥 New topic received:", req.body);
   try {
     const topic = new Topic(req.body);
     await topic.save();
@@ -19,23 +18,29 @@ router.post("/add", verifyToken, async (req, res) => {
   }
 });
 
-// 📌 Route: Get topics for a user (by job title or direct assignment)
-router.get("/user/:userId", async (req, res) => {
-  const user = await User.findById(req.params.userId);
-  if (!user) return res.status(404).json({ error: "User not found" });
+// 📌 Get assigned topics (🔁 FIXED: must come BEFORE /:id)
+router.get("/assigned", verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ error: "User not found" });
 
-  const topics = await Topic.find({
-    $or: [
-      { jobTitles: { $in: user.jobTitles } },
-      { assignedTo: user._id },
-      { jobTitles: "All" },
-    ]
-  });
+    const topics = await Topic.find({
+      $or: [
+        { jobTitles: { $in: user.jobTitles } },
+        { assignedTo: user._id },
+        { jobTitles: "All" },
+      ],
+    });
 
-  res.json(topics);
+    res.json(topics);
+  } catch (err) {
+    console.error("Failed to get assigned topics:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
-// 📌 Route: Admin assigns topic to job title or userId
+// 📌 Admin assigns topic
 router.post("/assign", async (req, res) => {
   const { topicId, jobTitle, userId } = req.body;
   const topic = await Topic.findById(topicId);
@@ -53,10 +58,12 @@ router.post("/assign", async (req, res) => {
   res.json({ message: "Topic assigned" });
 });
 
-// 📌 Route: Get all unassigned topics
+// 📌 Unassigned topics
 router.get("/unassigned", async (req, res) => {
   try {
-    const topics = await Topic.find({ jobTitles: { $size: 0 } }).sort({ createdAt: -1 });
+    const topics = await Topic.find({ jobTitles: { $size: 0 } }).sort({
+      createdAt: -1,
+    });
     res.json(topics);
   } catch (err) {
     console.error("Error fetching unassigned topics:", err);
@@ -64,7 +71,23 @@ router.get("/unassigned", async (req, res) => {
   }
 });
 
-// 📌 NEW: Get a specific topic by ID (for QuizView)
+// 📌 Get topics for a specific user
+router.get("/user/:userId", async (req, res) => {
+  const user = await User.findById(req.params.userId);
+  if (!user) return res.status(404).json({ error: "User not found" });
+
+  const topics = await Topic.find({
+    $or: [
+      { jobTitles: { $in: user.jobTitles } },
+      { assignedTo: user._id },
+      { jobTitles: "All" },
+    ],
+  });
+
+  res.json(topics);
+});
+
+// ✅ MUST COME LAST: Get topic by ID
 router.get("/:id", verifyToken, async (req, res) => {
   try {
     const topic = await Topic.findById(req.params.id);
@@ -72,29 +95,6 @@ router.get("/:id", verifyToken, async (req, res) => {
     res.json(topic);
   } catch (err) {
     console.error("Failed to get topic:", err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-// 📌 Route: Get assigned topics for the logged-in user
-router.get("/assigned", verifyToken, async (req, res) => {
-  try {
-    const userId = req.user.userId;
-
-    const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ error: "User not found" });
-
-    const topics = await Topic.find({
-      $or: [
-        { jobTitles: { $in: user.jobTitles } },
-        { assignedTo: user._id },
-        { jobTitles: 'All' },
-      ],
-    });
-
-    res.json(topics);
-  } catch (err) {
-    console.error("Failed to get assigned topics:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
