@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import User from "../models/User.js";
+import { verifyToken } from "../middleware/auth.js"; // ✅ Correct
 
 dotenv.config();
 
@@ -234,5 +235,52 @@ router.get("/list", async (req, res) => {
   const users = await User.find().select("-password");
   res.json(users);
 });
+
+// routes/users.js
+router.patch('/update-jobtitles/:id', verifyToken, async (req, res) => {
+  const { id } = req.params;
+  const { jobTitles, code } = req.body;
+
+  if (code !== 'Boss@2025') {
+    return res.status(403).json({ error: "Invalid passcode" });
+  }
+
+  try {
+    const admin = await getAdminFromToken(req);
+    const user = await User.findById(id);
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    user.jobTitles = jobTitles;
+
+    // Append to logs
+    const logEntry = {
+      changedBy: admin.name,
+      timestamp: new Date(),
+      jobTitles
+    };
+    if (!user.jobTitleLogs) user.jobTitleLogs = [];
+    user.jobTitleLogs.push(logEntry);
+
+    await user.save();
+    res.json({ message: "Job titles updated", jobTitles });
+  } catch (err) {
+    console.error("Failed to update job titles:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ✅ Get job title logs for a specific user
+router.get('/joblogs/:id', verifyToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id).select("jobTitleLogs");
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    res.json({ logs: user.jobTitleLogs || [] });
+  } catch (err) {
+    console.error("Failed to get job title logs:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 
 export default router;

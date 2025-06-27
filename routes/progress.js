@@ -21,33 +21,39 @@ router.post("/", async (req, res) => {
   res.json({ message: "Progress updated" });
 });
 
-// Admin: get summary per user
+// Admin: get summary per user (FLATTENED)
 router.get("/summary", async (req, res) => {
-  const users = await User.find();
-  const topics = await Topic.find();
-  const progress = await Progress.find().populate("userId").populate("topicId");
+  try {
+    const users = await User.find();
+    const topics = await Topic.find();
+    const progress = await Progress.find();
 
-  const summary = users.map((user) => {
-    const userProgress = progress.filter(p => p.userId._id.equals(user._id));
-    return {
-      user: {
-        name: user.name,
-        email: user.email,
-        jobTitles: user.jobTitles,
-      },
-      topics: topics.map(t => {
-        const match = userProgress.find(p => p.topicId._id.equals(t._id));
-        return {
-          topicTitle: t.title,
-          completed: match?.completed || false,
-          attempts: match?.attempts || 0
-        };
-      })
-    };
-  });
+    const summary = users.map(user => {
+      const assigned = topics.filter(t =>
+        t.jobTitles.includes("All") ||
+        t.jobTitles.some(j => user.jobTitles.includes(j))
+      );
 
-  res.json(summary);
+      const userProgress = progress.filter(p => p.userId.toString() === user._id.toString());
+
+      const completedCount = userProgress.filter(p => p.completed).length;
+
+      return {
+        userId: user._id,
+        name: `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.name,
+        jobTitles: user.jobTitles || [],
+        assignedCount: assigned.length,
+        completedCount,
+      };
+    });
+
+    res.json(summary);
+  } catch (err) {
+    console.error("Failed to fetch summary:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
+
 
 // ✅ NEW: Get all progress entries for a specific user
 router.get("/:userId", async (req, res) => {
@@ -75,6 +81,69 @@ router.get("/:userId", async (req, res) => {
   });
 
   res.json(enriched);
+});
+
+// ✅ NEW: Summary - One Row Per User
+router.get("/user-summary", async (req, res) => {
+  try {
+    const users = await User.find();
+    const progress = await Progress.find();
+    const topics = await Topic.find();
+
+    const summary = users.map(user => {
+      const assigned = topics.filter(t =>
+        t.jobTitles.includes("All") ||
+        t.jobTitles.some(j => user.jobTitles.includes(j))
+      );
+
+
+      const userProgress = progress.filter(p => p.userId.toString() === user._id.toString());
+
+      const completedCount = userProgress.filter(p => p.completed).length;
+
+      return {
+        userId: user._id,
+        name: `${user.firstName} ${user.lastName}`,
+        jobTitles: user.jobTitles,
+        assignedCount: assigned.length,
+        completedCount,
+      };
+    });
+    console.log("🧪 Summary result:", summary);
+    res.json(summary);
+  } catch (err) {
+    console.error("Failed to fetch summary:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ✅ NEW: Details - Topics & Attempts
+router.get("/user/:userId/details", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    const topics = await Topic.find({
+      jobTitles: { $in: user.jobTitles }
+    });
+
+    const progress = await Progress.find({ userId });
+
+    const details = topics.map(topic => {
+      const entry = progress.find(p => p.topicId.toString() === topic._id.toString());
+      return {
+        title: topic.title,
+        attempts: entry?.attempts || 0,
+        completed: entry?.completed || false,
+      };
+    });
+
+    res.json(details);
+  } catch (err) {
+    console.error("Failed to fetch details:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 export default router;

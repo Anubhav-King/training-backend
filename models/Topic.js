@@ -4,8 +4,8 @@ const topicSchema = new mongoose.Schema({
   title: String,
   content: String,
   imageUrl: String,
-  jobTitles: [String], // ["Technician", "All"] etc.
-  assignedTo: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }], // optional
+  jobTitles: [String],
+  assignedTo: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
   quiz: [
     {
       question: String,
@@ -13,6 +13,6 @@ const topicSchema = new mongoose.Schema({
       correctAnswer: String,
     },
   ],
-});
+}, { timestamps: true });
 
 export default mongoose.model("Topic", topicSchema);

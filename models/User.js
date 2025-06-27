@@ -21,6 +21,15 @@ const userSchema = new mongoose.Schema({
 
   passwordResetBy: String,
   passwordResetAt: Date,
+
+  jobTitleLogs: [
+    {
+      changedBy: String,
+      timestamp: Date,
+      jobTitles: [String]
+    }
+  ]
+  
 });
 
 const User = mongoose.model('User', userSchema);
