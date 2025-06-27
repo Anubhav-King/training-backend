@@ -4,6 +4,15 @@ import User from "../models/User.js";
 import TopicLog from "../models/TopicLog.js";
 import { verifyToken } from "../middleware/auth.js";
 import { getAdminFromToken } from "../utils/getAdminFromToken.js";
+import { Parser } from 'json2csv';
+import { format } from 'date-fns';
+import multer from 'multer';
+import csvParser from 'csv-parser';
+import { Readable } from 'stream';
+import TopicUpdateLog from '../models/TopicUpdateLog.js';
+import isEqual from 'lodash/isEqual.js';
+
+const upload = multer();
 
 const router = express.Router();
 
@@ -202,8 +211,205 @@ router.get("/unassigned/logs", verifyToken, async (req, res) => {
   }
 });
 
+// ------------------
+// ** IMPORTANT: Route order for fixed routes above dynamic ones **
+// ------------------
 
-// 📌 Get topic by ID
+// 📌 Export topics CSV (updated format)
+router.get("/csv/export", verifyToken, async (req, res) => {
+  try {
+    const topics = await Topic.find();
+
+    const data = topics.map(topic => {
+      // Extract sections from HTML content
+      const getSection = (html, section) => {
+        const match = html.match(new RegExp(`<h2>${section}</h2>(.*?)<h2>|<h2>${section}</h2>(.*)$`, 'is'));
+        return match ? (match[1] || match[2] || '').replace(/<\/?[^>]+(>|$)/g, '').trim() : '';
+      };
+
+      const objective = getSection(topic.content, "Objective");
+      const process = getSection(topic.content, "Process Explained");
+      const task = getSection(topic.content, "Task Breakdown");
+      const selfCheck = getSection(topic.content, "Self Check");
+
+      const quiz = topic.quiz || [];
+
+      return {
+        title: topic.title,
+        objective,
+        process_explained: process,
+        task_breakdown: task,
+        self_check: selfCheck,
+
+        q1_question: quiz[0]?.question || '',
+        q1_option1: quiz[0]?.options?.[0] || '',
+        q1_option2: quiz[0]?.options?.[1] || '',
+        q1_option3: quiz[0]?.options?.[2] || '',
+        q1_option4: quiz[0]?.options?.[3] || '',
+        q1_correct: quiz[0]?.correctAnswer || '',
+
+        q2_question: quiz[1]?.question || '',
+        q2_option1: quiz[1]?.options?.[0] || '',
+        q2_option2: quiz[1]?.options?.[1] || '',
+        q2_option3: quiz[1]?.options?.[2] || '',
+        q2_option4: quiz[1]?.options?.[3] || '',
+        q2_correct: quiz[1]?.correctAnswer || '',
+
+        q3_question: quiz[2]?.question || '',
+        q3_option1: quiz[2]?.options?.[0] || '',
+        q3_option2: quiz[2]?.options?.[1] || '',
+        q3_option3: quiz[2]?.options?.[2] || '',
+        q3_option4: quiz[2]?.options?.[3] || '',
+        q3_correct: quiz[2]?.correctAnswer || '',
+
+        q4_question: quiz[3]?.question || '',
+        q4_option1: quiz[3]?.options?.[0] || '',
+        q4_option2: quiz[3]?.options?.[1] || '',
+        q4_option3: quiz[3]?.options?.[2] || '',
+        q4_option4: quiz[3]?.options?.[3] || '',
+        q4_correct: quiz[3]?.correctAnswer || ''
+      };
+    });
+
+    const parser = new Parser();
+    const csv = parser.parse(data);
+
+    const timestamp = format(new Date(), 'yyyyMMdd_HHmmss');
+    res.header("Content-Type", "text/csv");
+    res.attachment(`topics_export_${timestamp}.csv`);
+    return res.send(csv);
+  } catch (err) {
+    console.error("CSV Export Error:", err);
+    res.status(500).json({ error: "Failed to export topics as CSV" });
+  }
+});
+
+
+// 📌 Import topics CSV (updated format)
+router.post("/csv/import", verifyToken, upload.single("file"), async (req, res) => {
+  try {
+    const adminName = await getAdminFromToken(req);
+    if (!req.file) return res.status(400).json({ error: "CSV file is required" });
+
+    const results = [];
+    const stream = Readable.from(req.file.buffer);
+
+stream
+.pipe(csvParser())
+.on("data", (data) => results.push(data))
+.on("end", async () => {
+  const logs = [];
+
+  for (const row of results) {
+    const existing = await Topic.findOne({ title: row.title });
+
+    const content = `
+      <h2>Objective</h2><p>${row.objective || ""}</p>
+      <h2>Process Explained</h2><p>${row.process_explained || ""}</p>
+      <h2>Task Breakdown</h2><p>${row.task_breakdown || ""}</p>
+      <h2>Self Check</h2><p>${row.self_check || ""}</p>
+    `.replace(/\n/g, "").trim();
+
+    const quiz = [];
+    for (let i = 1; i <= 4; i++) {
+      const question = row[`q${i}_question`];
+      const options = [1, 2, 3, 4].map(n => row[`q${i}_option${n}`]).filter(Boolean);
+      const correct = row[`q${i}_correct`];
+      if (question && options.length === 4 && correct) {
+        quiz.push({ question, options, correctAnswer: correct });
+      }
+    }
+
+    if (existing) {
+      const contentChanged = existing.content !== content;
+      const quizChanged = !isEqual(existing.quiz, quiz);
+
+      const updatedFields = {};
+      if (contentChanged) {
+        updatedFields.content = { from: existing.content, to: content };
+        existing.content = content;
+      }
+      if (quizChanged) {
+        updatedFields.quiz = { from: existing.quiz, to: quiz };
+        existing.quiz = quiz;
+      }
+
+      if (Object.keys(updatedFields).length > 0) {
+        await existing.save();
+        logs.push({
+          topicId: existing._id,
+          title: existing.title,
+          updatedBy: adminName,
+          updatedFields,
+          timestamp: new Date()
+        });
+      }
+    } else {
+      console.log("🆕 Creating new topic:", row.title);
+
+      const newTopic = new Topic({
+        title: row.title,
+        content,
+        quiz,
+        jobTitles: [],
+        assignedTo: [],
+      });
+      await newTopic.save();
+
+      const newLog = {
+        topicId: newTopic._id,
+        title: newTopic.title,
+        updatedBy: adminName,
+        updatedFields: {
+          content: { from: "", to: content },
+          quiz: { from: [], to: quiz }
+        },
+        timestamp: new Date()
+      };
+
+      console.log("📝 Logging new topic creation:", newLog);
+      logs.push(newLog);
+    }
+  }
+
+  await TopicUpdateLog.insertMany(logs);
+  console.log("📦 Inserted logs:", logs.length);
+  res.json({ message: "Topics upserted successfully", updated: logs.length });
+});
+
+
+  } catch (err) {
+    console.error("CSV Import Error:", err);
+    res.status(500).json({ error: "Failed to import CSV" });
+  }
+});
+
+router.get("/update-logs", verifyToken, async (req, res) => {
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 10;
+
+  try {
+    const total = await TopicUpdateLog.countDocuments();
+    const logs = await TopicUpdateLog.find()
+      .sort({ timestamp: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit);
+
+    res.json({
+      logs,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit)
+    });
+  } catch (err) {
+    console.error("Fetch logs error:", err);
+    res.status(500).json({ error: "Failed to fetch logs" });
+  }
+});
+
+
+
+// 📌 Get topic by ID (dynamic route, last)
 router.get("/:id", verifyToken, async (req, res) => {
   try {
     const topic = await Topic.findById(req.params.id);
@@ -226,23 +432,50 @@ router.get("/search", verifyToken, async (req, res) => {
 // 📌 Update topic by ID
 router.patch("/:id", verifyToken, async (req, res) => {
   try {
-    const updated = await Topic.findByIdAndUpdate(
-      req.params.id,
-      {
-        $set: {
-          content: req.body.content,
-          quiz: req.body.quiz
-        }
-      },
-      { new: true }
-    );
+    const topic = await Topic.findById(req.params.id);
+    if (!topic) return res.status(404).json({ error: "Topic not found" });
 
-    if (!updated) return res.status(404).json({ error: "Topic not found" });
-    res.json(updated);
+    const adminName = await getAdminFromToken(req);
+    const { content, quiz } = req.body;
+
+    const updatedFields = {};
+
+    // Compare content
+    if (content && content !== topic.content) {
+      updatedFields.content = {
+        from: topic.content,
+        to: content
+      };
+      topic.content = content;
+    }
+
+    // Compare quiz (deep comparison)
+    if (quiz && !isEqual(quiz, topic.quiz)) {
+      updatedFields.quiz = {
+        from: topic.quiz,
+        to: quiz
+      };
+      topic.quiz = quiz;
+    }
+
+    // Only log if something changed
+    if (Object.keys(updatedFields).length > 0) {
+      await TopicUpdateLog.create({
+        topicId: topic._id,
+        title: topic.title,
+        updatedFields,
+        updatedBy: adminName
+      });
+    }
+
+    await topic.save();
+    res.json(topic);
   } catch (err) {
+    console.error("Update topic error:", err);
     res.status(500).json({ error: "Failed to update topic" });
   }
 });
+
 
 
 export default router;
