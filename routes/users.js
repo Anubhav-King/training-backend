@@ -46,9 +46,12 @@ router.post("/register", async (req, res) => {
   }
 
   const filteredTitles = jobTitles.filter((t) => t !== "Admin");
-  if (isAdmin && filteredTitles.length === 0) {
+  const isAdminFromClient = req.body.isAdmin === true;
+
+  if (isAdminFromClient && filteredTitles.length === 0) {
     return res.status(400).json({ error: "Admin must have another job title" });
   }
+
 
   const hashed = await bcrypt.hash(password, SALT_ROUNDS);
   const user = new User({
@@ -56,7 +59,7 @@ router.post("/register", async (req, res) => {
     mobile,
     password: hashed,
     jobTitles: filteredTitles,
-    isAdmin,
+    isAdmin: isAdminFromClient,
     active: false,
     mustChangePassword: password === "Monday01",
     approvedBy: null,

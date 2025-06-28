@@ -5,7 +5,7 @@ const userSchema = new mongoose.Schema({
   mobile: { type: String, unique: true },
   password: String,
   jobTitles: [String],
-  isAdmin: Boolean,
+  isAdmin: { type: Boolean, default: false },
   mustChangePassword: { type: Boolean, default: true },
   active: { type: Boolean, default: true },
   approved: { type: Boolean, default: false },
