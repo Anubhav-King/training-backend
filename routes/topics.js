@@ -407,6 +407,60 @@ router.get("/update-logs", verifyToken, async (req, res) => {
   }
 });
 
+// 📌 PATCH: Update topic images section-wise
+router.patch("/:id/images", verifyToken, async (req, res) => {
+  try {
+    const topic = await Topic.findById(req.params.id);
+    if (!topic) return res.status(404).json({ error: "Topic not found" });
+
+    const { section, urls, replace } = req.body;
+    if (!section || !Array.isArray(urls)) {
+      return res.status(400).json({ error: "Section and array of image URLs required" });
+    }
+
+    const validSections = ["objective", "process", "task", "selfCheck"];
+
+    const key = section.toLowerCase().replace(/\s/g, '');
+    const mapping = {
+      objective: "objective",
+      processexplained: "process",
+      taskbreakdown: "task",
+      selfcheck: "selfCheck"
+    };
+    const field = mapping[key];
+    if (!validSections.includes(field)) {
+      return res.status(400).json({ error: "Invalid section name" });
+    }
+
+    if (replace) {
+      // Replace entire array
+      topic.images[field] = urls;
+    } else {
+      // Append URLs to existing array
+      topic.images[field] = [...(topic.images[field] || []), ...urls];
+    }
+
+    await topic.save();
+
+    res.json({ message: `Images ${replace ? "replaced" : "added"} to ${field}`, images: topic.images[field] });
+  } catch (err) {
+    console.error("Error updating topic images:", err);
+    res.status(500).json({ error: "Failed to update topic images" });
+  }
+});
+
+// GET all topics (assigned and unassigned)
+router.get("/", verifyToken, async (req, res) => {
+  try {
+    const topics = await Topic.find().sort({ createdAt: -1 });
+    res.json(topics);
+  } catch (err) {
+    console.error("Failed to fetch all topics:", err);
+    res.status(500).json({ error: "Failed to fetch topics" });
+  }
+});
+
+
 
 
 // 📌 Get topic by ID (dynamic route, last)
@@ -428,6 +482,7 @@ router.get("/search", verifyToken, async (req, res) => {
   const topics = await Topic.find({ title: new RegExp(`^${title}$`, 'i') });
   res.json(topics);
 });
+
 
 // 📌 Update topic by ID
 router.patch("/:id", verifyToken, async (req, res) => {

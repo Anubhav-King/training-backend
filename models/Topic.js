@@ -6,6 +6,12 @@ const topicSchema = new mongoose.Schema({
   imageUrl: String,
   jobTitles: [String],
   assignedTo: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+  images: {
+    objective: [String],
+    process: [String],
+    task: [String],
+    selfCheck: [String]
+  },
   quiz: [
     {
       question: String,
