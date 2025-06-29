@@ -51,10 +51,12 @@ if (isAdminFromClient && jobTitles.length < 2) {
   return res.status(400).json({ error: "Admin must have another job title" });
 }
 
+const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
+
 const user = new User({
   name,
   mobile,
-  password: hashed,
+  password: hashedPassword,
   jobTitles,
   isAdmin: isAdminFromClient,
   active: false,
