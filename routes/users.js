@@ -45,25 +45,23 @@ router.post("/register", async (req, res) => {
     return res.status(400).json({ error: "User already exists" });
   }
 
-  const filteredTitles = jobTitles.filter((t) => t !== "Admin");
   const isAdminFromClient = req.body.isAdmin === true;
 
-  if (isAdminFromClient && filteredTitles.length === 0) {
-    return res.status(400).json({ error: "Admin must have another job title" });
-  }
+if (isAdminFromClient && jobTitles.length < 2) {
+  return res.status(400).json({ error: "Admin must have another job title" });
+}
 
+const user = new User({
+  name,
+  mobile,
+  password: hashed,
+  jobTitles,
+  isAdmin: isAdminFromClient,
+  active: false,
+  mustChangePassword: password === "Monday01",
+  approvedBy: null,
+});
 
-  const hashed = await bcrypt.hash(password, SALT_ROUNDS);
-  const user = new User({
-    name,
-    mobile,
-    password: hashed,
-    jobTitles: jobTitles.filter(t => t !== "Admin"),
-    isAdmin: !!isAdmin,
-    active: false,
-    mustChangePassword: password === "Monday01",
-    approvedBy: null,
-  });
 
   await user.save();
   res.status(201).json({ message: "User registered and pending approval" });
