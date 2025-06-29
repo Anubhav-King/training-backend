@@ -199,6 +199,29 @@ router.post("/login", async (req, res) => {
   });
 });
 
+// 🚨 TEMPORARY: One-time admin fixer route
+router.post("/fix-initial-admin", async (req, res) => {
+  const { mobile = "9999999999" } = req.body;
+
+  try {
+    const user = await User.findOne({ mobile });
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    user.active = true;
+    user.approvedBy = "System";
+    user.approvedAt = new Date();
+    user.deactivatedAt = null;
+    user.deactivatedBy = null;
+
+    await user.save();
+    res.json({ message: "✅ Admin fixed and activated" });
+  } catch (err) {
+    console.error("Fix Admin Error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+
 // ✅ Change Password
 router.post("/change-password", async (req, res) => {
   const { userId, newPassword } = req.body;
