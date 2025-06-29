@@ -222,22 +222,32 @@ router.post("/fix-initial-admin", async (req, res) => {
 });
 
 
-// ✅ Change Password
-router.post("/change-password", async (req, res) => {
-  const { userId, newPassword } = req.body;
+// ✅ Backend: Only updates password, expects token & validated data
+router.post("/change-password", verifyToken, async (req, res) => {
+  const { newPassword } = req.body;
 
-  if (newPassword === "Monday01") {
-    return res.status(400).json({ error: "You must choose a new password" });
+  if (!newPassword) {
+    return res.status(400).json({ error: "New password is required" });
   }
 
-  const hashed = await bcrypt.hash(newPassword, SALT_ROUNDS);
-  await User.findByIdAndUpdate(userId, {
-    password: hashed,
-    mustChangePassword: false,
-  });
+  try {
+    const token = req.headers.authorization?.split(" ")[1];
+    const decoded = jwt.verify(token, SECRET);
+    const user = await User.findById(decoded.userId);
+    if (!user) return res.status(404).json({ error: "User not found" });
 
-  res.json({ message: "Password updated successfully" });
+    const hashed = await bcrypt.hash(newPassword, SALT_ROUNDS);
+    user.password = hashed;
+    user.mustChangePassword = false;
+    await user.save();
+
+    res.json({ message: "Password updated successfully" });
+  } catch (err) {
+    console.error("Change password error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
 });
+
 
 // ✅ Check if a mobile number is already registered
 router.post("/check-mobile", async (req, res) => {
