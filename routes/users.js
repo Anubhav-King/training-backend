@@ -167,8 +167,15 @@ router.post("/login", async (req, res) => {
 
   const user = await User.findOne({ mobile });
   if (!user) return res.status(404).json({ error: "User not found" });
-  if (!user.active)
-    return res.status(403).json({ error: "User is deactivated" });
+  if (!user.active) {
+    if (!user.approvedBy) {
+      // User registered but not yet approved
+      return res.status(403).json({ error: "User is not yet activated" });
+    } else {
+      // User was approved before, but now deactivated
+      return res.status(403).json({ error: "User has been deactivated" });
+    }
+  }
 
   const match = await bcrypt.compare(password, user.password);
   if (!match) return res.status(401).json({ error: "Incorrect password" });
