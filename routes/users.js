@@ -209,6 +209,23 @@ router.post("/change-password", async (req, res) => {
   res.json({ message: "Password updated successfully" });
 });
 
+// ✅ Check if a mobile number is already registered
+router.post("/check-mobile", async (req, res) => {
+  const { mobile } = req.body;
+  if (!mobile || typeof mobile !== "string") {
+    return res.status(400).json({ error: "Invalid mobile number" });
+  }
+
+  try {
+    const existingUser = await User.findOne({ mobile });
+    res.json({ exists: !!existingUser });
+  } catch (err) {
+    console.error("Mobile check failed:", err);
+    res.status(500).json({ error: "Server error during mobile check" });
+  }
+});
+
+
 // ✅ Admin creates user directly (approved & active)
 router.post("/add-user", async (req, res) => {
   const { name, mobile, jobTitle } = req.body;
