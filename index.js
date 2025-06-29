@@ -13,7 +13,10 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 10000;
-const allowedOrigins = [process.env.FRONTEND_URL || "http://localhost:3000"];
+const allowedOrigins = [
+  "https://training-frontend-eight.vercel.app",
+  "http://localhost:5173"
+];
 
 // ✅ CORS middleware (don't use '*', use explicit origins)
 app.use(cors({
