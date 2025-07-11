@@ -33,16 +33,29 @@ router.get("/assigned", verifyToken, async (req, res) => {
     const user = await User.findById(req.user.userId);
     if (!user) return res.status(404).json({ error: "User not found" });
 
-    const topics = await Topic.find({
-      $or: [
-        { jobTitles: { $in: user.jobTitles } },
-        { assignedTo: user._id },
-        { jobTitles: "All" },
-      ],
-    });
+    let topics;
+
+    if (user.isAdmin) {
+      // Admins can see all topics that are assigned to someone
+      topics = await Topic.find({
+        $or: [
+          { jobTitles: { $exists: true, $not: { $size: 0 } } },
+          { assignedTo: { $exists: true, $not: { $size: 0 } } }
+        ]
+      });
+    } else {
+      topics = await Topic.find({
+        $or: [
+          { jobTitles: { $in: user.jobTitles } },
+          { assignedTo: user._id },
+          { jobTitles: "All" },
+        ]
+      });
+    }
 
     res.json(topics);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
