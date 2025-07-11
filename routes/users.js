@@ -310,7 +310,15 @@ router.patch('/update-jobtitles/:id', verifyToken, async (req, res) => {
     const user = await User.findById(id);
     if (!user) return res.status(404).json({ error: "User not found" });
 
+    // Update job titles
     user.jobTitles = jobTitles;
+
+    // Update isAdmin based on jobTitles
+    if (jobTitles.includes("Admin")) {
+      user.isAdmin = true;
+    } else {
+      user.isAdmin = false;
+    }
 
     // Append to logs
     const logEntry = {
@@ -328,6 +336,7 @@ router.patch('/update-jobtitles/:id', verifyToken, async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
+
 
 // ✅ Get job title logs for a specific user
 router.get('/joblogs/:id', verifyToken, async (req, res) => {
